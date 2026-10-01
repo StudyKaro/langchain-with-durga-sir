@@ -1519,3 +1519,149 @@ Example :
                 print(result,end="",flush=True)
 # streaming provide the output in chunks.
 # used adaptor for convertion 
+
+important Points:
+===================
+1. RunnableLambda converts a python callable into a `Runnable`
+2. can get the intermediate result among the chain components.
+3.`RunnableLambda` is best suited for code that does not need to support
+    streaming.
+4. If you need to support streaming (i.e., be able to operate
+    on chunks of inputs and yield chunks of outputs), use `RunnableGenerator`
+    instead.
+5. Order of Runnable component is important
+6. compatibility of components is matter, Incompatible output lead error
+7. RunnableSequence and Pipe(|) both are same, or 2 different way to create chain.
+    chain = add_adaptor | mult_adaptor | sub_adaptor
+    chain2 = RunnableSequence(add_adaptor, mult_adaptor, sub_adaptor)
+8. Output get only from the last compoment of chain, not from middle
+9. Input provide only to first component
+10. Chain compoment is dependent, when last component output to input of next component
+    A-->B-->C-->D
+    if task has no dependency then use RunnableParallel
+11. In chain use multiple model LLM1(gpt-4o-mini), LLM2(gpt-5-nano) so that.
+
+
+Example : 
+        from langchain_core.runnables import RunnableLambda
+        from langchain_core.runnables import RunnableSequence
+        store_val ={}
+        # callable functions to be used in the chain
+        def add_fun(input):
+            result = input + 10
+            print(result)
+            store_val["add_result"] = result
+            return result
+        def mult_fun(input):
+            result = input * 2
+            store_val["mult_result"] = result
+            print(result)
+            return result
+        def sub_fun(input):
+            result = input - 5
+            store_val["sub_result"] = result
+            print(result)
+            return result
+
+        # `RunnableLambda` converts a python callable into a `Runnable`.
+        add_adaptor = RunnableLambda(add_fun)
+        mult_adaptor = RunnableLambda(mult_fun)
+        sub_adaptor = RunnableLambda(sub_fun)
+        # can call a single component 
+        # print("Call Add_Adaptor with input 5: ",add_adaptor.invoke(5))
+
+        chain = add_adaptor | mult_adaptor | sub_adaptor
+        # input only on first component of the chain, rest of the components will get the output of previous component as input
+        result = chain.invoke(5)
+        print("Final Result:", result)
+        print("Stored Values:", store_val)
+
+        chain2 = RunnableSequence(add_adaptor, mult_adaptor, sub_adaptor)
+        result2 = chain2.invoke(10)
+        print("Final Result (Chain 2):", result2)
+        print("Stored Values (Chain 2):", store_val)
+
+        for result3 in RunnableSequence(add_adaptor, mult_adaptor, sub_adaptor).batch([3,4,30]):
+            print("Final Result (Batch):", result3)
+        print("Stored Values (Batch):", store_val)
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Day 24 : Date 01/10/2026
+------------------------
+Parallel Execution :
+******************
+- Multiple independent tasks can be start from the same input without waiting for one another's result.
+- Use RunnableParallel to generate parallel chain
+- RunnableParallel is part of langchain_core.runnables (import it)
+- Use same input to all parallel compoment (branch) because its independent
+- Parallel compoment is generally called branch
+- Generate the output in dict format with atributes, those many atributes will be same as branch_name.
+------------------
+Example : 
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.prompts import PromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.runnables import  RunnableSequence, RunnableLambda, RunnableParallel
+
+
+    square_adaptor = RunnableLambda(lambda input: {"topic": input**2})
+    cube_adaptor = RunnableLambda(lambda input: {"topic": input**3})
+    # create parallel chain
+    # with branch , here square and cube are the branch, same name use in result as dict key 
+    parallel_chain = RunnableParallel(
+        square=square_adaptor,
+         cube=cube_adaptor
+         )
+
+    # input (3) is same for square and cube 
+    parallel_result = parallel_chain.invoke(3)
+
+    print("Parallel Result:", parallel_result)
+    # use dict to get the result corresponding to branch name (parallel)
+    print("Square Table of content:", parallel_result["square"])
+    print("Cube Table of content:", parallel_result["cube"])
+--------------------------------------------
+Example :
+    import os
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.prompts import PromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.runnables import (RunnableSequence,
+                                        RunnableLambda,
+                                        RunnableParallel)
+
+    llm = ChatOpenAI(model="gpt-4o-mini",api_key=os.getenv("OPENAI_API_KEY")) # model component
+    prompt1 = PromptTemplate.from_template("Generate a clean and funny joke on : {topic}. ")
+    prompt2 = PromptTemplate.from_template("A strong motivational message on {topic}.")
+    parser = StrOutputParser()
+
+    joke_chain = prompt1| llm | parser #Branch1
+    motivate_chain = prompt2 | llm | parser #Branch2
+
+    # RunnableParallel allows run multiple chains in parallel and get their results in a single dictionary.
+    # Same input passed to all branches, and each branch can have its own chain of components.
+    parallel_chain = RunnableParallel(
+        joke=joke_chain, #Branch1 Name : joke => that name used in dict to access the result of that branch
+        motivate=motivate_chain #Branch2 Name : motivate => that name used in dict to access the result of that branch
+    )
+    topic = input("Enter topic :")
+
+    # Single input to the parallel chain, which will be passed to both branches
+    parallel_result = parallel_chain.invoke({"topic": topic})
+    print("Parallel Result:", parallel_result)
+    print("Joke:", parallel_result["joke"])
+    print("Motivate:", parallel_result["motivate"])
+-----------------
+# Simplely : Parallel Execution FLow
+
+              |--------> Social Media Post
+topic : AI -->|--------> Blog Post
+              |--------> Summery
+
+Same AI message across the all branches.
+Output must be corresponding to each branch in a dictionary object.
+
+Task for you : Generate a summary over the given input topic and then generate blog post, social media post and quiz.
+Hint : use hybrid workflow. (Sequencial + Parallel)
