@@ -1586,7 +1586,7 @@ Example :
         print("Stored Values (Batch):", store_val)
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-Day 24 : Date 01/10/2026
+Day 25 : Date 01/10/2026
 ------------------------
 Parallel Execution :
 ******************
@@ -1665,3 +1665,171 @@ Output must be corresponding to each branch in a dictionary object.
 
 Task for you : Generate a summary over the given input topic and then generate blog post, social media post and quiz.
 Hint : use hybrid workflow. (Sequencial + Parallel)
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 26, Date 02/10/2026
+-----------
+# RunnablePassthrough:
+- RunnablePassthrough passes its input forward unchanged. 
+- With .assign(), it preserves a dictionary’s existing fields and adds calculated fields.
+- just passthrough input, not modify. kept as it as.
+
+Example :
+        from langchain_core.runnables import RunnableParallel, RunnablePassthrough,RunnableLambda
+
+        double_adaptor = RunnableLambda(lambda input: input * 2)
+        square_adaptor = RunnableLambda(lambda input: input ** 2)
+        cube_adaptor = RunnableLambda(lambda input: input ** 3)
+
+        chain = RunnableParallel(
+            double=double_adaptor,
+            square=square_adaptor,
+            cube=cube_adaptor,
+            original=RunnablePassthrough()
+        )
+        # result = chain.batch([3,5,10])
+        # print("===========Result=========")
+        # for key in result:
+        #     for k,v in key.items():
+        #         print(k.capitalize(),":",v)
+        #     print("============")
+
+        result = chain.invoke(5)
+        print("===========Result=========")
+        for key, value in result.items():
+            print(f"{key.capitalize()}: {value}")
+        print("============")
+---------------
+Batch() v/s RunnableParallel() :
+- batch() use when have multiple input and a task (sequencial execution), output in list
+- RunnableParallel use when have a single input and Mutliple branches, output per branch
+- batch() can also use with RunnableParallel
+
+| Statement in the image                    |          Verdict            |                         More precise interpretation |
+|--- -----------------------------|---------|-----------------------------|-------------------------------------------------------------
+| Multiple inputs and one task → `batch()` | Correct with clarification | Apply the same runnable or entire workflow to multiple inputs. |
+| One input and multiple tasks → `RunnableParallel` | Correct for independent tasks | Send the same input to multiple branches and collect their outputs. |
+| You can apply `batch()` to `RunnableParallel` | Correct | A parallel workflow is itself a runnable and inherits batching methods. |
+| Every batch input executes all branches | Correct for normal successful execution | Each input fans out across the configured branches; failures can prevent a complete result. |
+
+Comman Mistakes for RunnableParallel:
+1. forget the branch name
+2. Thinking every branch recieve another branch output as input
+3. batch() vs RunnableParallel
+4. RunnableParallel is lower cost.
+--------------
+
+LCEL :
+- LCEL - Allows us to compose Runnable into workflows. or help to create pipeline.
+- RunnableSequence for dependent
+- RunnableParallel for independent task
+- RunnableLambda convert Python callable to runnable.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 27 , Just Revision
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Day 28 02-10-26
+
+
+RunnableBranch
+-------------
+- What if we don't want to execute every path ?
+- what if we want to choose one path based on some condition ?
+- To meet these requirements then we should go for RunnanleBranch
+-RunnableBranch adds if / elif / else logic to a LangChain pipeline.
+- It help to select one Runnable based on some condition.
+-It checks conditions in order and runs the first matching branch.
+-If none match, it runs the default branch.
+
+Basic syntax :
+RunnableBranch(
+    (condition_1, runnable_1), #tuple/set first argument condition and second argument Runnable
+    (condition_2, runnable_2),
+    default_action # No condition match
+)
+
+- Each condition receives the input and returns True or False. The selected action receives that same input.
+- Atleast 2 branches compulsory
+- default branch also compulsory
+
+Examples :
+        from langchain_core.runnables import RunnableBranch,RunnableLambda,RunnableSequence
+
+        # Example 1
+
+        runnable_branch1 = RunnableLambda(lambda input: "PASS")
+        runnable_branch2 = RunnableLambda(lambda input: "FAIL")
+
+
+        runnable_branch = RunnableBranch(
+            (lambda input: input > 35 , runnable_branch1),
+            runnable_branch2
+        )
+
+        runnable_branch_result = runnable_branch.invoke(40)
+        print("Runnable Branch Result:", runnable_branch_result)
+
+        # Example 2 :
+
+        branch = RunnableBranch(
+            (lambda input: input%2 == 0 , RunnableLambda(lambda input: "EVEN")),  
+            RunnableLambda(lambda input: "ODD")
+        )
+        branch_result = branch.invoke(7)
+        print("Branch Result:", branch_result)
+
+        # Example 3 :
+
+        branch1 = RunnableBranch(
+            (lambda input: (input%6) == 1 ,lambda input: "Move one step forward"),  
+            (lambda input: (input%6) == 2 ,lambda input: "Move two steps forward"),  
+            (lambda input: (input%6) == 3 ,lambda input: "Move three steps forward"),  
+            (lambda input: (input%6) == 4 ,lambda input: "Move four steps forward"),  
+            (lambda input: (input%6) == 5 ,lambda input: "Move five steps forward"),  
+            lambda input: "Move six steps forward" # default is mandatory 
+        )
+
+        input_value = int(input("Roll the disc: "))
+        branch_result1 = branch1.invoke(input_value)
+        print("Branch Result:", branch_result1)
+
+--------------
+
+Example :
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_core.output_parsers import StrOutputParser
+        from langchain_core.runnables import RunnableBranch
+
+        coding_prompt = ChatPromptTemplate.from_template(
+            "You are a Python tutor. Explain with code examples: {question}"
+        )
+
+        business_prompt = ChatPromptTemplate.from_template(
+            "You are a business advisor. Give practical steps: {question}"
+        )
+
+        general_prompt = ChatPromptTemplate.from_template(
+            "Answer clearly and simply: {question}"
+        )
+
+        prompt_router = RunnableBranch(
+            (
+                lambda data: data["category"] == "coding",
+                coding_prompt,
+            ),
+            (
+                lambda data: data["category"] == "business",
+                business_prompt,
+            ),
+            general_prompt,
+        )
+
+        chain = prompt_router | llm | StrOutputParser()
+
+        result = chain.invoke({
+            "category": "coding",
+            "question": "How does a Python dictionary work?",
+        })
+
+        print(result)
