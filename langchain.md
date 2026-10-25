@@ -1954,7 +1954,7 @@ Date 03-10-2026
 Slice : A part of whole. i.e -> Apple slices.
 
 1. list : 
-- index base access start 0
+- index base access start from 0
 - Python also support negative index i.e. -1,-2
 syntax : list[begin:end:step]
 
@@ -1973,6 +1973,7 @@ Examples :
         print(list_example[-4:-1])  # Output: [70, 80, 90]
         print(list_example[-1])  # Output: 100
         print(list_example[-3:])  # Output: [80, 90, 100]
+        print(items[-1:-4]) # wrong : move in forward direction
 
         # copy list into another list using slicing
         list_copy = list_example[:]
@@ -2358,3 +2359,3690 @@ Example :
 
         for message in history["history"]:
             print(type(message).__name__," : ", message.content)
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 37 :
+Date : 06-10-2026
+====
+
+What is the limitation of ConversationBufferMemory, ConversationBufferWindowMemory and ConversationChain :
+---------
+
+1. Not compatible with Runnable or LCEL compoment
+2. No multi session isolation or multi-user chat memory separation, used single global memory
+3. Risk of data leakage between users(privacy and security issue)
+4. API deprecated in the new versions.
+
+----------------------
+Use 
+1. RunnableWithMessageHistory (Runnable+With+MessageHistory)
+- its a wrapper on Runnable components (LLM,prompt, model, chain)
+2.InMemoryChatMessageHistory
+- Hold the history in memory until application is running
+
+
+Example :
+    import os
+    from langchain_core.chat_history import InMemoryChatMessageHistory
+    from langchain_openai import ChatOpenAI
+
+    llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
+
+    memory = InMemoryChatMessageHistory()
+    memory.add_user_message("Hi, I am Pradeep Jain")
+    memory.add_ai_message("Nice to meet you Pradeep!")
+    print(memory)
+
+Examle :
+        import os
+
+        from langchain_core.runnables import RunnableWithMessageHistory
+        from langchain_core.chat_history import InMemoryChatMessageHistory
+        from langchain_core.messages import HumanMessage
+        from langchain_openai import ChatOpenAI
+
+        llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
+
+        # memory = InMemoryChatMessageHistory()
+        # memory.add_user_message("Hi, I am Pradeep Jain")
+        # memory.add_ai_message("Nice to meet you Pradeep!")
+        # print(memory)
+
+        #store history with session_id key  
+        # generate the session_id
+        store ={}
+        def get_session_history(session_id):
+            if session_id not in store:
+                store[session_id] = InMemoryChatMessageHistory()
+            return store[session_id]
+        # pass model and memory
+        chain = RunnableWithMessageHistory(
+            llm,
+            get_session_history
+        )
+        response = chain.invoke(
+            [HumanMessage(content="My name is  Pradeep.")],
+            config={"configurable": {"session_id": "jain"}},
+        )
+        response = chain.invoke(
+            [HumanMessage(content="I live in Sagar.")],
+            config={"configurable": {"session_id": "jain"}},
+        )
+        response = chain.invoke(
+            [HumanMessage(content="Looking bridal for my brother.")],
+            config={"configurable": {"session_id": "jain"}},
+        )
+        response = chain.invoke(
+            [HumanMessage(content="What is my name?")],
+            config={"configurable": {"session_id": "jain"}},
+        )
+        print(response.content)
+
+
+
+===============
+15 Key Important Points
+-----------------------
+
+1. Conversation history is still a sequence of Human and AI messages.
+2. InMemoryChatMessageHistory stores chat messages in application memory.
+3. In-memory history is not automatically permanent storage.
+4. Different conversations should normally have separate histories.
+5. A session represents a particular conversation context.
+6. session_id identifies which conversation history should be used.
+7. Same session_id allows subsequent calls to use the same conversation history.
+8. Different session_id values allow separate conversation histories.
+9. RunnableWithMessageHistory wraps another Runnable.
+10. The wrapper reads and updates the selected chat history.
+11. A normal LCEL chain such as prompt | llm can be wrapped with message history.
+12. MessagesPlaceholder provides a position in the prompt for historical messages.
+13. input_messages_key identifies the current-input field when using dictionary input.
+14. history_messages_key identifies where historical messages belong in the wrapped
+Runnable's input.
+15. The current architecture separates the Runnable, history storage, and session
+selection more explicitly than the old ConversationChain approach.
+
+Five Coding Lines Students Must Remember
+----------------------------------------
+
+1. History
+history = InMemoryChatMessageHistory()
+
+2. History Store
+store = {}
+
+3. Session Function
+def get_session_history(session_id):
+
+4. History Wrapper
+chatbot = RunnableWithMessageHistory(
+    chain,
+    get_session_history,
+    input_messages_key="question",
+    history_messages_key="history"
+)
+
+5. Session Invocation
+config={
+    "configurable": {
+        "session_id": "session1"
+    }
+}
+
+-------------
+67. MCQ 1
+What is the main purpose of:
+RunnableWithMessageHistory
+A. Generate embeddings
+B. Manage message history around a Runnable
+C. Parse JSON
+D. Run parallel chains
+
+
+68. MCQ 2
+What happens when two calls use the same:
+session_id
+
+A. They must use different models
+B. They can use the same conversation history
+C. History is deleted
+D. Pydantic validation starts
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 39
+Date 07-10-2026
+-------------------
+1. What is Serialization?
+------------------------
+Serialization means converting an object into a format that can be easily stored or transferred.
+
+Simple idea:
+LangChain Message Object
+        ↓
+   Serialization
+        ↓
+Dictionary / JSON
+        ↓
+Can be stored in a file or database
+
+
+Persistent Conversation History
+-------------------------------
+Persistent state is state stored outside temporary application memory so that it can be recovered later.
+
+For example:
+Python Program
+     ↓
+Stops
+     ↓
+Starts Again
+     ↓
+Load Previous Data
+
+eg:
+Possible persistent stores:
+Files
+Databases like SQLite,PostgreSQL
+Cloud Database
+Other Persistent Storage
+==================================================
+LangChain Message Serialization & Deserialization
+-------------------------------------------------
+LangChain provides useful functions for converting message objects into storable data and converting stored data back into LangChain messages.
+
+LangChain provides utilities such as:
+message_to_dict() and messages_from_dict() for this.
+
+1. What is Serialization?
+------------------------
+Serialization means converting an object into a format that can be easily stored or transferred.
+
+Simple idea:
+LangChain Message Object
+        ↓
+   Serialization
+        ↓
+Dictionary / JSON
+        ↓
+Can be stored in a file or database
+
+program:
+--------
+from langchain_core.messages import HumanMessage, message_to_dict
+message = HumanMessage(content="Hello Durga Sir")
+data = message_to_dict(message)
+print(data)
+
+{'type': 'human', 'data': {'content': 'Hello Durga Sir', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'human', 'name': None, 'id': None}}
+
+Note:
+message_to_dict() converts one LangChain message into a Python dictionary.
+
+Message
+   ↓
+message_to_dict()
+   ↓
+Serializable Dictionary
+
+2. What does "Serializable" mean?
+--------------------------------
+Serializable means the data is in a form that can be easily saved or transferred.
+
+For example:
+HumanMessage Object
+      ↓
+Dictionary
+      ↓
+JSON File
+
+Note:
+A Python/LangChain object cannot always be directly stored in a JSON file. So first we convert it into a dictionary.
+
+Simple definition:
+Serialization = Object → Storable format
+
+3. What is Deserialization?
+----------------------------
+Deserialization means converting stored data back into the original type of object.
+
+JSON / Dictionary
+        ↓
+ Deserialization
+        ↓
+LangChain Message Object
+
+LangChain provides:
+messages_from_dict()
+
+
+It converts a sequence of message dictionaries back into LangChain Message objects. 
+
+Dictionaries
+     ↓
+messages_from_dict()
+     ↓
+LangChain Messages
+
+Simple definition:
+Deserialization = Stored format → Object
+---------------
+4. Complete Flow
+HumanMessage / AIMessage
+          ↓
+   message_to_dict()
+          ↓
+     Dictionary
+          ↓
+       JSON File
+          ↓
+     json.load()
+          ↓
+     Dictionaries
+          ↓
+ messages_from_dict()
+          ↓
+HumanMessage / AIMessage
+====================================================
+import json
+
+from langchain_core.messages import (
+    HumanMessage,
+    AIMessage,
+    message_to_dict,
+    messages_from_dict
+)
+
+
+# ========================================
+# 1. CREATE LANGCHAIN MESSAGES
+# ========================================
+
+messages = [
+    HumanMessage(
+        content="My name is Durga."
+    ),
+
+    AIMessage(
+        content="Nice to meet you, Durga."
+    )
+]
+
+
+print("ORIGINAL LANGCHAIN MESSAGES")
+print("---------------------------")
+
+for message in messages:
+    print(
+        type(message).__name__,
+        ":",
+        message.content
+    )
+
+
+# ========================================
+# 2. MESSAGES -> PYTHON DICTIONARIES
+# ========================================
+
+serialized = [
+    message_to_dict(message) for message in messages ]
+
+print("\nPYTHON DICTIONARIES")
+print("-------------------")
+
+print(serialized)
+
+
+# ========================================
+# 3. PYTHON DICTIONARIES -> JSON STRING
+# ========================================
+
+json_string = json.dumps(
+    serialized,
+    indent=2
+)
+
+print("\nJSON STRING")
+print("-----------")
+
+print(json_string)
+
+
+# ========================================
+# 4. JSON STRING -> PYTHON DICTIONARIES
+# ========================================
+
+python_data = json.loads(
+    json_string
+)
+
+print("\nBACK TO PYTHON DICTIONARIES")
+print("---------------------------")
+
+print(python_data)
+
+
+# ========================================
+# 5. PYTHON DICTIONARIES -> LANGCHAIN MESSAGES
+# ========================================
+
+restored_messages = messages_from_dict(
+    python_data
+)
+
+print("\nRESTORED LANGCHAIN MESSAGES")
+print("---------------------------")
+
+for message in restored_messages:
+
+    print(
+        type(message).__name__,
+        ":",
+        message.content
+    )
+====================================
+
+Note:
+json.dumps() ====> Python Object → JSON String
+indent=2 means use 2 spaces for each level.
+========================================================
+messages
+   ↓
+message_to_dict()
+   ↓
+Python Dictionaries
+   ↓
+json.dumps()
+   ↓
+JSON String
+   ↓
+json.loads()
+   ↓
+Python Dictionaries
+   ↓
+messages_from_dict()
+   ↓
+LangChain Messages
+
+Note:
+message_to_dict()
+LangChain Message → Dictionary
+
+json.dumps()
+Python Object → JSON String
+
+json.loads()
+JSON String → Python Object
+
+messages_from_dict()
+Dictionaries → LangChain Messages
+---------------------------------
+Student Memory Trick
+dumps = Python → JSON String
+loads = JSON String → Python
+
+So the complete idea is:
+Serialization side: Message → Dictionary → JSON String
+Deserialization side: JSON String → Dictionary → Message
+
+=========================
+import os
+import json
+
+from langchain_openai import ChatOpenAI
+
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    MessagesPlaceholder
+)
+
+from langchain_core.chat_history import (
+    BaseChatMessageHistory
+)
+
+from langchain_core.messages import (
+    BaseMessage,
+    message_to_dict,
+    messages_from_dict
+)
+
+from langchain_core.runnables.history import (
+    RunnableWithMessageHistory
+)
+
+
+# ========================================
+# 1. PERSISTENT CHAT HISTORY
+# ========================================
+
+class FileChatMessageHistory(
+    BaseChatMessageHistory
+):
+
+    def __init__(
+        self,
+        session_id,
+        storage_path="chat_history"
+    ):
+
+        self.session_id = session_id
+
+        os.makedirs(
+            storage_path,
+            exist_ok=True
+        )
+
+        self.file_path = os.path.join(
+            storage_path,
+            f"{session_id}.json"
+        )
+
+
+    # ------------------------------------
+    # LOAD MESSAGES
+    # ------------------------------------
+
+    @property
+    def messages(self):
+
+        if not os.path.exists(
+            self.file_path
+        ):
+            return []
+
+        with open(
+            self.file_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            data = json.load(file)
+
+        return messages_from_dict(
+            data
+        )
+
+    # ------------------------------------
+    # SAVE MESSAGES
+    # ------------------------------------
+
+    def add_messages(
+        self,
+        messages: list[BaseMessage]
+    ) -> None:
+
+        all_messages = list(
+            self.messages
+        )
+
+        all_messages.extend(
+            messages
+        )
+
+        serialized = [
+            message_to_dict(message)
+            for message in all_messages
+        ]
+
+        with open(
+            self.file_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                serialized,
+                file,
+                ensure_ascii=False,
+                indent=2
+            )
+
+
+    # ------------------------------------
+    # CLEAR HISTORY
+    # ------------------------------------
+
+    def clear(self) -> None:
+
+        with open(
+            self.file_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                [],
+                file
+            )
+
+
+# ========================================
+# 2. CREATE MODEL
+# ========================================
+
+llm = ChatOpenAI(
+    model="gpt-5.6-luna",
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+
+# ========================================
+# 3. CREATE PROMPT
+# ========================================
+
+prompt = ChatPromptTemplate.from_messages(
+
+    [
+        (
+            "system",
+            """
+            You are a helpful AI assistant.
+            Answer in simple English.
+            """
+        ),
+
+        MessagesPlaceholder(
+            variable_name="history"
+        ),
+
+        (
+            "human",
+            "{question}"
+        )
+    ]
+)
+
+
+# ========================================
+# 4. CREATE LCEL CHAIN
+# ========================================
+
+chain = (
+    prompt
+    | llm
+)
+
+# ========================================
+# 5. GET SESSION HISTORY
+# ========================================
+
+def get_session_history(
+    session_id
+):
+
+    return FileChatMessageHistory(
+        session_id
+    )
+
+
+# ========================================
+# 6. ADD MESSAGE HISTORY
+# ========================================
+
+chatbot = RunnableWithMessageHistory(
+
+    chain,
+    get_session_history,
+
+    input_messages_key="question",
+
+    history_messages_key="history"
+)
+
+
+# ========================================
+# 7. GET SESSION ID
+# ========================================
+
+session_id = input(
+    "Enter session id: "
+)
+
+
+print("\nAI Chatbot")
+print("Type 'exit' to stop")
+print("------------------------")
+# ========================================
+# 8. CHAT LOOP
+# ========================================
+
+while True:
+
+    user_input = input(
+        "\nYou: "
+    )
+
+
+    if user_input.lower() == "exit":
+
+        print(
+            "Chat ended."
+        )
+
+        break
+
+
+    response = chatbot.invoke(
+
+        {
+            "question": user_input
+        },
+
+        config={
+            "configurable": {
+                "session_id":
+                session_id
+            }
+        }
+    )
+
+
+    print(
+        "AI:",
+        response.content
+    )
+
+===================================
+Code snippets :
+---------
+Example :
+import os
+folder_name='chat_history2'
+os.makedirs(folder_name,exist_ok=True)
+print('Folder created')
+-------------------
+class Student:
+	def get_name(self):
+		return "Durga"
+
+s = Student()
+print(s.get_name())
+---------------------------
+class Student:
+	
+	@property
+	def get_name(self):
+		return "Ravi"
+
+s = Student()
+print(s.get_name)
+
+@property is a Python decorator.
+It allows us to access a method like a normal variable or attribute
+--------------------
+with open('student1.txt','w',encoding='utf-8') as file:
+	file.write('Durga is learning Python with full focus')
+
+with open('student1.txt','r',encoding='utf-8') as f:
+	data = f.read()
+
+print(data)
+----------------------------
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 40 : 
+Read the program set by step :
+- Understand the functionality of FileChatMessageHistory
+- 
+
+Example : ### Mini Project ###
+import os
+import json
+
+from langchain_openai import ChatOpenAI
+
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    MessagesPlaceholder
+)
+
+from langchain_core.chat_history import (
+    BaseChatMessageHistory
+)
+
+from langchain_core.messages import (
+    BaseMessage,
+    message_to_dict,
+    messages_from_dict
+)
+
+from langchain_core.runnables.history import (
+    RunnableWithMessageHistory
+)
+
+
+# ========================================
+# 1. PERSISTENT CHAT HISTORY
+# ========================================
+
+class FileChatMessageHistory(   # extending super class BaseChatMessageHistory
+    BaseChatMessageHistory
+):
+
+    def __init__(
+        self,
+        session_id,
+        storage_path="chat_history"
+    ):
+
+        self.session_id = session_id
+
+        os.makedirs(
+            storage_path,
+            exist_ok=True
+        )
+
+        self.file_path = os.path.join(
+            storage_path,
+            f"{session_id}.json"
+        )
+
+
+    # ------------------------------------
+    # LOAD MESSAGES
+    # ------------------------------------
+
+    @property
+    def messages(self):  # overriding this getter method
+
+        if not os.path.exists(
+            self.file_path
+        ):
+            return []
+
+        with open(
+            self.file_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            data = json.load(file)
+
+        return messages_from_dict(
+            data
+        )
+
+    # ------------------------------------
+    # SAVE MESSAGES
+    # ------------------------------------
+
+    def add_messages(  # overriding 
+        self,
+        messages: list[BaseMessage]
+    ) -> None:
+
+        all_messages = list(
+            self.messages
+        )
+
+        all_messages.extend(   # like list1.addAll(list2)
+            messages
+        )
+
+        serialized = [
+            message_to_dict(message)
+            for message in all_messages
+        ]
+
+        with open(
+            self.file_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                serialized,
+                file,
+                ensure_ascii=False, # accept all different language characters
+                indent=2
+            )
+
+
+    # ------------------------------------
+    # CLEAR HISTORY
+    # ------------------------------------
+
+    def clear(self) -> None:
+
+        with open(
+            self.file_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                [],
+                file
+            )
+
+
+# ========================================
+# 2. CREATE MODEL
+# ========================================
+
+llm = ChatOpenAI(
+    model="gpt-5.6-luna",
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+
+# ========================================
+# 3. CREATE PROMPT
+# ========================================
+
+prompt = ChatPromptTemplate.from_messages(
+
+    [
+        (
+            "system",
+            """
+            You are a helpful AI assistant.
+            Answer in simple English.
+            """
+        ),
+
+        MessagesPlaceholder(
+            variable_name="history"
+        ),
+
+        (
+            "human",
+            "{question}"
+        )
+    ]
+)
+
+
+# ========================================
+# 4. CREATE LCEL CHAIN
+# ========================================
+
+chain = (
+    prompt
+    | llm
+)
+
+# ========================================
+# 5. GET SESSION HISTORY
+# ========================================
+
+def get_session_history(
+    session_id
+):
+
+    return FileChatMessageHistory(
+        session_id
+    )
+
+
+# ========================================
+# 6. ADD MESSAGE HISTORY
+# ========================================
+
+chatbot = RunnableWithMessageHistory(
+
+    chain,
+    get_session_history,
+
+    input_messages_key="question",
+
+    history_messages_key="history"
+)
+
+
+# ========================================
+# 7. GET SESSION ID
+# ========================================
+
+session_id = input(
+    "Enter session id: "
+)
+
+
+print("\nAI Chatbot")
+print("Type 'exit' to stop")
+print("------------------------")
+# ========================================
+# 8. CHAT LOOP
+# ========================================
+
+while True:
+
+    user_input = input(
+        "\nYou: "
+    )
+
+
+    if user_input.lower() == "exit":
+
+        print(
+            "Chat ended."
+        )
+
+        break
+
+
+    response = chatbot.invoke(
+
+        {
+            "question": user_input
+        },
+
+        config={
+            "configurable": {
+                "session_id":
+                session_id
+            }
+        }
+    )
+
+
+    print(
+        "AI:",
+        response.content
+    )
+    =====================================
+
+# Another official example :  https://reference.langchain.com/python/langchain-core/chat_history/BaseChatMessageHistory?utm_source=chatgpt.com
+Example :
+import json
+import os
+from langchain_core.messages import messages_from_dict, message_to_dict
+
+class FileChatMessageHistory(BaseChatMessageHistory):
+    storage_path: str
+    session_id: str
+
+    @property
+    def messages(self) -> list[BaseMessage]:
+        try:
+            with open(
+                os.path.join(self.storage_path, self.session_id),
+                "r",
+                encoding="utf-8",
+            ) as f:
+                messages_data = json.load(f)
+            return messages_from_dict(messages_data)
+        except FileNotFoundError:
+            return []
+
+    def add_messages(self, messages: Sequence[BaseMessage]) -> None:
+        all_messages = list(self.messages)  # Existing messages
+        all_messages.extend(messages)  # Add new messages
+
+        serialized = [message_to_dict(message) for message in all_messages]
+        file_path = os.path.join(self.storage_path, self.session_id)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(serialized, f)
+
+    def clear(self) -> None:
+        file_path = os.path.join(self.storage_path, self.session_id)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 41 :
+Date 09-10-2026
+-------------------
+MINI Project : save history permanently in file.
+________________________________________________
+        import os
+        import json
+        from langchain_core.messages import BaseMessage,AIMessage,SystemMessage, HumanMessage,message_to_dict, messages_from_dict
+        from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
+        from langchain_core.chat_history import InMemoryChatMessageHistory, BaseChatMessageHistory
+        from langchain_core.runnables import RunnableWithMessageHistory
+        from langchain_openai import ChatOpenAI
+
+        #----------------------------------#
+        #-------GPT MODEL CONNECTION-------#
+        #----------------------------------#
+        llm = ChatOpenAI(model="gpt-4o-mini",api_key=os.getenv("OPENAI_API_KEY"))
+
+        #----------------------------------#
+        #-----------PROMPT-----------------#
+        #----------------------------------#
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system","You are a helpful AI digital assistant."),
+                MessagesPlaceholder(variable_name = "history"),
+                ("human","{user_query}")
+            ]
+        )
+
+        #----------------------------------#
+        #----------- CHAIN ----------------#
+        #----------------------------------#
+
+        chain = prompt | llm
+
+        #============= File Chat Memory
+        class FileChatMessageHistory(BaseChatMessageHistory): # extending and overriding its methods
+            def __init__(self,session_id,storage_path = "chat_history"):
+                self.session_id = session_id
+                os.makedirs(storage_path,exist_ok=True)
+                self.file_path = os.path.join(storage_path,f"{session_id}.json")
+            @property
+            def messages(self):
+                if not os.path.exists(self.file_path):
+                    return []
+                with open(self.file_path,"r",encoding="utf-8") as file:
+                    data = json.load(file)
+                    return messages_from_dict(data)
+                
+            def add_messages(self, messages:list[BaseMessage]) -> None:
+                all_existing_messages = list(self.messages)
+                all_existing_messages.extend(messages)
+                serialized = [message_to_dict(message) for message in all_existing_messages]
+                with open(self.file_path, "w", encoding="utf-8") as file:
+                    json.dump(serialized,file,ensure_ascii=False,indent=2)
+            def clear(self):
+                return super().clear()
+
+        def get_session_history(session_id):
+            return FileChatMessageHistory(session_id)
+
+        #-------------------------------------#
+        #------------In Memory-----------------#
+        #-------------------------------------#
+        store = {}
+        def get_history_by_session(sesson_id):
+            if history_type == "memory": 
+                if sesson_id not in store :
+                    store[sesson_id] = InMemoryChatMessageHistory()
+                return store[sesson_id]
+            else:
+                return  FileChatMessageHistory(session_id)
+
+        #-------------------------------------#
+        #------------Runnable-----------------#
+        #-------------------------------------#
+
+        wrapper = RunnableWithMessageHistory(
+            chain,
+            get_history_by_session,
+            # get_session_history,
+            input_messages_key="user_query",
+            history_messages_key="history"
+        )
+
+        history_type = input("History Type (Memory/File): ").lower()
+
+        session_id = input("Enter session id: ")
+
+        while True:
+            user_query  = input("YOU: ")
+            if user_query.lower() == "exit":
+                print("Chat ended.")
+                break
+            response = wrapper.invoke(
+                {"user_query": user_query},
+                config={
+                    "configurable" :{
+                        "session_id":session_id
+                        } 
+                }
+                )
+            print("AI:",response.content,"\n")
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 42:
+Conversation memory revision:
+25 MCQ
+-----------------
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 43:
+Mini Project with Sign Up / Sign In functionality.
+-------------------------
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 44 :
+
+RAG : Retrieval Augmented Generation
+------------------------------------
+# 5 modules in this journey.
+What breakfast I taken today ? can you tell or can guess?
+- can you guess? really.
+
+
+fine tuning 
+availability
+Why RAG concept is sepatately design ? why not upload doc on prompt ?
+
+
+How RAG work?
+
+RAG Modules:
+1. Ducument Loader :
+common object(document)
+ - page content
+ - metadata 
+
+2. Text spliter
+    - split document into chunks
+    property of 
+    a. chunk size
+    b. chunk overlap (for continuetion purpuse that make the relation b/w )
+
+3. Embedding :
+    - add matched(sementic) words or chunks.
+
+4. Vector DB:
+
+Above 4 steps create Knowledge  base.
+
+5. Retriever
+ - input convert into the embedding
+ - embedding match with vector DB
+ - return both input and matched chunk
+
+
+=========================
+Final Master Conclusions
+RAG ->   "No facts? No guessing!"
+Document Loader-> "Make available what us source"
+Splitter -> "Break the document, not the meaning!"
+Embedding-> "Different words. Same meaning. That's embeddings!"
+Vector -> store embedding
+Retriver->   "return stores. Retriever finds!"
+  
+"RAG doesn't retrain. It retrieves!"
+"The right information makes AI powerful!"  
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Attention mechanism 
+Day 47 :
+
+Document Loaders help us read supported external sources and represent their content as LangChain Document objects.
+
+What Is a LangChain Document?
+A LangChain Document is a class used to represent a piece of text and its associated metadata.
+
+A. First Important Attribute — page_content
+------------------------------------------
+page_content stores the actual text represented by a LangChain Document.
+Suppose a school notice says:
+"All students must carry their ID cards."
+Where should we maintain this text?
+- Inside page_content.
+- Important Observations   page_content contains text.
+- It can contain a single sentence or multiple paragraphs.
+- The word page does not mean exactly one PDF page.
+- page_content does not automatically generate an AI answer.
+   Note: page_content = WHAT IS WRITTEN.
+   
+B. Second Important Attribute — metadata
+------------------------------------------
+Metadata is additional information describing the content.
+1, Metadata is a "dict" object
+2. its optional
+3. fields are not fix in metadata
+4. custom metadata is allow
+
+METADATA = Information about the content.(additional info of provided content)
+
+PAGE_CONTENT = Original Content
+
+example :
+        from langchain_core.documents import Document
+
+        #we can create manual Document Object
+        # Document is a class
+        # Usually DocumentLoader create the Object of Document class, But manually also create
+        # Document class has two propery 1. page_content->str 2. metadata-> dict
+        # page_content = original page 
+        # metadata = additional info , its in dict type and optional
+        document = Document(page_content="Read a page of Memory.")
+
+        print("Document Object : ")
+        print(type(document).__name__) # document
+
+        print(document.page_content) # content
+==================
+Document : create document object manually
+METADATA= INFORMATION ABOUT THE CONTENT
+- Document is a LangChain class. 
+- page_content stores the text.
+- metadata stores additional descriptive information. 
+- Multiple Document objects can be maintained together.
+- Creating a Document does not automatically read a file or call an LLM.   
+
+1. LLMs do not automatically receive the contents of our private external files.
+2. LangChain provides the Document class to represent text and related metadata.
+3. page_content contains the actual text.
+4. metadata maintains information describing that text.
+5. One physical file can be represented by one or multiple Document objects.
+6. Multiple Document objects can be maintained together in a Python list.
+7. Creating Document objects manually is different from reading external files using Document Loaders.
+
+Example :
+        from langchain_core.documents import Document
+
+        document1 = Document(
+            page_content="Bring the ID, its compusory",
+            metadata = {
+                "source":"school_rule.txt",
+                "department":"administration"
+            })
+
+        document2 = Document(
+            page_content="Commitment, focus and deep work.",
+            metadata = {
+                "source":"durga_sir_rule.txt",
+                "department":"motivational"
+            })
+        document3 = Document(
+            page_content="I will become a business.",
+            metadata = {
+                "source":"business_rule.txt",
+                "author":"malik"
+            })
+
+        docs = [document1,document2,document3]
+        for index,document in enumerate(docs,start=1):
+            print(f"=== Document: {index} ===")
+            print(document.page_content) 
+
+            print(document.metadata)
+
+            print(document.metadata["source"])
+
+            print(document.metadata.get("department","Unkown"))
+
+            print(document.metadata.get("author","Not declared"))
+            print()
+
+
+MCQ 2
+What is the main purpose of metadata?
+A. Train the LLM
+B. Generate AI responses
+C. Maintain descriptive information
+D. Execute Python programs
+
+MCQ 3
+Does manually creating a Document automatically read a text file?
+A. Yes
+B. No
+C. Only for PDF files
+D. Only when an API key is available
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 48: Date : 17-10-2026
+------
+
+Consistency : What a consistency of Durgs Sir.
+He is travelling Guntur to Hyderabad of Nav-Durga fest, at 9 pm get outside from the car in midde some Dhaba 
+and taken 5 min class on TextLoader() and PyPDFLoader().
+
+Pradeep : I will also achieve such kind of consistency in my life. (Commitment bole to commitment)
+-------------------
+***Day 49 :***
+**Document Loader**
+-------------------
+Example : 
+    from langchain_core.documents import Document
+
+    document = Document(
+        page_content="Python is a programming language.",
+        metadata={
+            "source": "python_notes.txt"
+        }
+    )
+
+- Instead of manually providing the content, we want LangChain to read the actual file and create Document objects for us.
+- Loader reads the content
+- Loader can supply source metadata
+- Actual file is required
+- Loader creates the Document
+- Main class: TextLoader
+-- We need an  recoganized mechanism to load information from existing files.
+-- Document Loaders help us obtain information from external sources in a standard LangChain Document format.
+
+# Def:
+- A Document Loader is a component that reads information from a supported external source and produces LangChain Document objects.
+-- Convert source information into LangChain Document objects.
+
+# Document vs Document Loader vs LLM:
+  -----------------------------------
+- Document Loader reads the information.
+- Document represents the information.
+- LLM may later use relevant information to generate a response.
+
+# TextLoader
+------------
+Definition
+TextLoader is a LangChain Document Loader used to read plain text files and represent their contents as Document objects.
+
+
+pip install langchain_community
+from langchain_community.document_loaders import TextLoader
+
+Note:
+Document:	Represents content and metadata
+TextLoader:	Reads text files and produces Documents
+
+Why TextLoader When Python Already Has open()?
+----------------------------------------------
+with open(
+    "student_rules.txt",
+    "r",
+    encoding="utf-8"
+) as file:
+    content = file.read()
+
+A Python string containing the file's text.
+
+loader = TextLoader(
+    "student_rules.txt",
+    encoding="utf-8"
+)
+# actual load into memory
+documents = loader.load()
+
+What does this give?
+A list of LangChain Document objects.
+
+
+loader = TextLoader(
+    file_path="student_rules.txt",
+    encoding="utf-8"
+)
+
+
+file_path	Identifies the file to load
+encoding	Specifies how the file's text is decoded
+
+Definition
+The .load() method reads the source through the loader and returns the loaded information as a list of Document objects.
+
+10. What Does load() Return?
+-----------------------------
+It is a list of Document objects.
+
+•	A TextLoader normally produces one Document for one text file.
+•	A PDF loader may produce multiple Documents, depending on its settings.
+Using a list provides a consistent return structure.
+
+12. Understanding Metadata After Loading
+-----------------------------------------
+TextLoader supplies source metadata, and our application may add custom metadata when required.
+{"source": "student_rules.txt"}
+
+document.metadata["department"] = "Administration"
+
+Why UTF-8?
+UTF-8 supports English, Telugu, Hindi and many other languages, along with symbols such as ₹.
+
+---------------------------------------------------
+from pathlib import Path
+
+base_dir = Path(__file__).resolve().parent
+
+file_path = base_dir / "student_rules.txt"
+
+from pathlib import Path
+
+base_dir = Path(__file__).resolve().parent
+
+file_path = base_dir / "student_rules.txt"
+print(file_path)
+
+E:\lcclasses>py test.py
+E:\lcclasses\student_rules.txt
+
+Note:
+Purpose: To get the absolute path of the folder where the currently running Python file is located.
+Let's understand step by step.
+
+1. __file__
+It represents the path of the current Python file.
+Example:
+__file__ = "D:/projects/chatbot/main.py"
+
+
+2. Path(__file__)
+Converts the file path into a Path object.
+Path("D:/projects/chatbot/main.py")
+
+
+
+This allows us to perform path-related operations easily.
+3. .resolve()
+Converts the path into an absolute path and resolves symbolic links.
+Example:
+Path(__file__).resolve()
+
+
+
+Output:
+D:\projects\chatbot\main.py
+
+
+4. .parent
+Returns the directory containing the file.
+Path(__file__).resolve().parent
+
+
+
+Output:
+D:\projects\chatbot
+
+17. Understanding load() vs lazy_load()
+----------------------------------------
+What Is lazy_load()?
+lazy_load() provides an iterator that yields Document objects as they become available.
+For example:
+for document in loader.lazy_load():
+    print(document.page_content)
+
+
+load()	                             lazy_load()
+-------------------------------------------------------------
+Returns a list of Documents	        Returns an iterator of Documents
+Collects results before returning	Allows processing as Documents are yielded
+Convenient for ordinary loading	        Useful for iterative processing
+
+Note:
+.load() returns a complete list. .lazy_load() supports iterative Document processing
+
+Requirement	Syntax
+Import TextLoader	from langchain_community.document_loaders import TextLoader
+Create loader	  TextLoader(file_path, encoding="utf-8")
+Load file	 loader.load()
+Iterate lazily	  loader.lazy_load()
+Access first Document	 documents[0]
+Access actual text	 documents[0].page_content
+Access metadata	    documents[0].metadata
+Access source	    documents[0].metadata["source"]
+-----------------------
+21. Program 1 — Our First TextLoader Program
+--------------------------------------------
+from pathlib import Path
+
+from langchain_community.document_loaders import TextLoader
+
+
+# ========================================
+# CREATE SAMPLE TEXT FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "student_rules.txt"
+)
+
+file_path.write_text(
+    "Students must carry their ID cards.\n"
+    "Classes start at 9 AM.\n"
+    "Mobile phones are not allowed.\n",
+    encoding="utf-8"
+)
+
+
+# ========================================
+# CREATE TEXT LOADER
+# ========================================
+
+loader = TextLoader(
+    file_path=str(file_path),
+    encoding="utf-8"
+)
+
+
+# ========================================
+# LOAD DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY TOTAL DOCUMENTS
+# ========================================
+
+print("TOTAL DOCUMENTS")
+print("---------------")
+
+print(len(documents))
+
+
+# ========================================
+# ACCESS FIRST DOCUMENT
+# ========================================
+
+document = documents[0]
+
+
+# ========================================
+# DISPLAY CONTENT
+# ========================================
+
+print("\nPAGE CONTENT")
+print("------------")
+
+print(document.page_content.strip())
+
+
+# ========================================
+# DISPLAY SOURCE
+# ========================================
+
+print("\nSOURCE FILE")
+print("-----------")
+
+print(
+    Path(
+        document.metadata["source"]
+    ).name
+)
+-----------------------
+22. Program 2 — Understanding Return Type and Metadata
+--------------------------------------------------------
+from pathlib import Path
+
+from langchain_community.document_loaders import TextLoader
+
+
+# ========================================
+# CREATE SAMPLE TEXT FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "library_rules.txt"
+)
+
+content = (
+    "The library opens at 8 AM.\n"
+    "The library closes at 6 PM.\n"
+)
+
+file_path.write_text(
+    content,
+    encoding="utf-8"
+)
+
+
+# ========================================
+# CREATE TEXT LOADER
+# ========================================
+
+loader = TextLoader(
+    file_path=str(file_path),
+    encoding="utf-8"
+)
+
+
+# ========================================
+# LOAD DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# CHECK RETURN TYPE
+# ========================================
+
+print("RETURN TYPE")
+print("-----------")
+
+print(type(documents).__name__)
+
+
+# ========================================
+# CHECK TOTAL DOCUMENTS
+# ========================================
+
+print("\nTOTAL DOCUMENTS")
+print("---------------")
+
+print(len(documents))
+
+
+# ========================================
+# ACCESS DOCUMENT
+# ========================================
+
+document = documents[0]
+
+print("\nDOCUMENT TYPE")
+print("-------------")
+
+print(type(document).__name__)
+
+
+# ========================================
+# DISPLAY SOURCE METADATA
+# ========================================
+
+print("\nSOURCE FILE")
+print("-----------")
+
+print(
+    Path(
+        document.metadata["source"]
+    ).name
+)
+
+
+# ========================================
+# ADD CUSTOM METADATA
+# ========================================
+
+document.metadata["department"] = "Library"
+
+
+# ========================================
+# DISPLAY CUSTOM METADATA
+# ========================================
+
+print("\nDEPARTMENT")
+print("----------")
+
+print(document.metadata["department"])
+
+
+# ========================================
+# CHECK ORIGINAL FILE
+# ========================================
+
+print("\nORIGINAL FILE UNCHANGED?")
+print("------------------------")
+
+print(
+    file_path.read_text(encoding="utf-8")
+    == content
+)
+
+
+Main Conclusion
+TextLoader creates Document objects with source metadata. We can extend the metadata without changing the original text file.
+
+24. Program 3 — Loading Multiple Text Files
+--------------------------------------------
+from pathlib import Path
+
+from langchain_community.document_loaders import TextLoader
+
+
+# ========================================
+# CREATE DEMO FOLDER
+# ========================================
+
+base_dir = (
+    Path(__file__).resolve().parent
+    / "day2_notices"
+)
+
+base_dir.mkdir(
+    exist_ok=True
+)
+
+
+# ========================================
+# CREATE THREE TEXT FILES
+# ========================================
+
+file_data = {
+    "student_rules.txt":
+        "Students must carry their ID cards.",
+
+    "library_notice.txt":
+        "The library closes at 6 PM.",
+
+    "fee_notice.txt":
+        "Course fee deadline is 15 November 2026."
+}
+
+for file_name, content in file_data.items():
+
+    file_path = base_dir / file_name
+
+    file_path.write_text(
+        content,
+        encoding="utf-8"
+    )
+
+
+# ========================================
+# LOAD ALL TEXT FILES
+# ========================================
+
+all_documents = []
+
+for file_name in file_data:
+
+    file_path = base_dir / file_name
+
+    loader = TextLoader(
+        file_path=str(file_path),
+        encoding="utf-8"
+    )
+
+    documents = loader.load()
+
+    all_documents.extend(documents)
+
+
+# ========================================
+# DISPLAY TOTAL DOCUMENTS
+# ========================================
+
+print("TOTAL DOCUMENTS")
+print("---------------")
+
+print(len(all_documents))
+
+
+# ========================================
+# DISPLAY EACH DOCUMENT
+# ========================================
+
+for number, document in enumerate(
+    all_documents,
+    start=1
+):
+
+    print("\nDOCUMENT", number)
+
+    print(
+        "SOURCE:",
+        Path(
+            document.metadata["source"]
+        ).name
+    )
+
+    print(
+        "CONTENT:",
+        document.page_content
+    )
+
+Main Conclusion
+We can use TextLoader repeatedly to convert information from multiple text files into a collection of LangChain Document objects.
+
+============
+Program 5 — Handling a Missing Text File
+------------------------------------------
+from pathlib import Path
+
+from langchain_community.document_loaders import TextLoader
+
+
+# ========================================
+# SPECIFY NON-EXISTING FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "missing_notice_for_demo_98765.txt"
+)
+
+
+# ========================================
+# CREATE TEXT LOADER
+# ========================================
+
+loader = TextLoader(
+    file_path=str(file_path),
+    encoding="utf-8"
+)
+
+
+# ========================================
+# ATTEMPT TO LOAD FILE
+# ========================================
+
+try:
+
+    documents = loader.load()
+
+    print(
+        "TOTAL DOCUMENTS:",
+        len(documents)
+    )
+
+except RuntimeError:
+
+    print("FILE LOADING FAILED")
+
+    print(
+        "The file could not be read."
+    )
+
+    print(
+        "Check the file path,"
+        " permissions and encoding."
+    )
+
+Main Conclusion
+Document loading depends on the availability and accessibility of the actual source file.
+-----------------
+Program 6 — Understanding lazy_load()
+=====================================
+from pathlib import Path
+
+from langchain_community.document_loaders import TextLoader
+
+
+# ========================================
+# CREATE SAMPLE FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "course_notice.txt"
+)
+
+file_path.write_text(
+    "New Python batch starts on Monday.\n"
+    "Class timing is 7 AM.\n",
+    encoding="utf-8"
+)
+
+
+# ========================================
+# CREATE TEXT LOADER
+# ========================================
+
+loader = TextLoader(
+    file_path=str(file_path),
+    encoding="utf-8"
+)
+
+
+# ========================================
+# PROCESS DOCUMENTS LAZILY
+# ========================================
+
+count = 0
+
+for document in loader.lazy_load():
+
+    count += 1
+
+    print("DOCUMENT", count)
+
+    print(
+        "CONTENT:",
+        document.page_content.strip()
+    )
+
+    print(
+        "SOURCE:",
+        Path(
+            document.metadata["source"]
+        ).name
+    )
+
+
+# ========================================
+# DISPLAY TOTAL
+# ========================================
+
+print("\nTOTAL PROCESSED:", count)
+
+Main Conclusion
+load() collects Documents into a list, whereas lazy_load() allows us to process Documents as they are yielded.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Day 50 :
+-------
+1. Important PyPDFLoader Syntax Summary
+----------------------------------------
+Requirement	Syntax
+Import loader	 from langchain_community.document_loaders import PyPDFLoader
+Create PDF loader	PyPDFLoader(file_path="sample.pdf")
+Page-wise loading	mode="page"
+Combined loading	mode="single"
+Load all Documents	loader.load()
+Iterate over Documents	loader.lazy_load()
+Read page text	document.page_content
+Read page index	document.metadata["page"]
+Read page count	document.metadata["total_pages"]
+Read page label	document.metadata.get("page_label")
+Read source	document.metadata["source"]
+Page separator	pages_delimiter="..."
+------------------------------
+Program 1 — Our First PyPDFLoader Program
+==========================================
+Objective: Load a single-page PDF and access its content and source information.
+
+from langchain_community.document_loaders import PyPDFLoader
+
+# ========================================
+# CREATE PDF LOADER
+# ========================================
+
+loader = PyPDFLoader(
+    file_path="library_notice.pdf"
+)
+
+
+# ========================================
+# LOAD PDF DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY RETURN INFORMATION
+# ========================================
+
+print("RETURN TYPE")
+print("-----------")
+print(type(documents).__name__) #List
+
+print("\nTOTAL DOCUMENTS")
+print("---------------")
+print(len(documents))  #1
+
+
+# ========================================
+# ACCESS FIRST DOCUMENT
+# ========================================
+
+document = documents[0]
+
+
+# ========================================
+# DISPLAY EXTRACTED CONTENT
+# ========================================
+
+print("\nPAGE CONTENT")
+print("------------")
+print(document.page_content)
+
+
+# ========================================
+# DISPLAY METADATA
+# ========================================
+print("\nMETADATA")
+print("------------")
+print(document.metadata)
+
+
+# ========================================
+# DISPLAY SOURCE INFORMATION
+# ========================================
+
+print("\nSOURCE FILE")
+print("-----------")
+
+print(document.metadata["source"])
+
+# ========================================
+# DISPLAY PDF PAGE INFORMATION
+# ========================================
+
+print("\nPAGE INFORMATION")
+print("----------------")
+
+print("Page Index:",document.metadata["page"]) #0
+
+print("Total Pages:", document.metadata["total_pages"])
+
+
+-----------------------
+Program 2 — Loading a Multipage PDF
+-----------------------------------------
+Objective: Load a three-page PDF and access each page separately.
+
+from langchain_community.document_loaders import PyPDFLoader
+
+# ========================================
+# CREATE PAGE-WISE PDF LOADER
+# ========================================
+
+loader = PyPDFLoader(
+    file_path="company_policy.pdf",
+    mode="page"
+)
+
+
+# ========================================
+# LOAD PDF PAGES
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY TOTAL DOCUMENTS
+# ========================================
+
+print("COMPANY POLICY PDF")
+print("==================")
+
+print(
+    "Total Documents:",
+    len(documents)
+)
+
+
+# ========================================
+# DISPLAY EACH PAGE
+# ========================================
+
+for document in documents:
+
+    page_index = document.metadata["page"]
+
+    page_number = page_index + 1
+
+    
+
+    print("\nPAGE", page_number)
+    print("---------------------")
+
+    print("CONTENT:\n", document.page_content)
+	
+Program 3 — Understanding PDF Metadata in Detail
+------------------------------------------------------
+Objective: Examine source metadata, PDF page index, page label and total page count
+
+from langchain_community.document_loaders import PyPDFLoader
+from pathlib import Path
+
+# ========================================
+# CREATE PDF LOADER
+# ========================================
+
+loader = PyPDFLoader(
+    file_path="company_policy.pdf",
+    mode="page"
+)
+
+
+# ========================================
+# LOAD DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY PDF SUMMARY
+# ========================================
+
+print("PDF METADATA REPORT")
+print("===================")
+
+print(
+    "Total Documents:",
+    len(documents)
+)
+
+
+# ========================================
+# DISPLAY METADATA FOR EACH PAGE
+# ========================================
+
+for document in documents:
+
+    metadata = document.metadata
+
+    print("\nPAGE METADATA")
+    print("-------------")
+
+    print("Source:",metadata["source"])
+
+    print(
+        "Page Index:",
+        metadata["page"]
+    )
+
+    print(
+        "Display Page:",
+        metadata["page"] + 1
+    )
+
+    print(
+        "Page Label:",
+        metadata.get(
+            "page_label",
+            "Not available"
+        )
+    )
+
+    print(
+        "Total Pages:",
+        metadata["total_pages"]
+    )
+====================================================================
+Program 4 — mode="page" vs mode="single"
+--------------------------------------------
+from langchain_community.document_loaders import PyPDFLoader
+
+# ========================================
+# PAGE MODE
+# ========================================
+
+page_loader = PyPDFLoader(
+    file_path="company_policy.pdf",
+    mode="page"
+)
+
+page_documents = page_loader.load()
+
+
+# ========================================
+# SINGLE MODE
+# ========================================
+
+single_loader = PyPDFLoader(
+    file_path="company_policy.pdf",
+    mode="single",
+    pages_delimiter="\n--- PAGE BREAK ---\n"
+)
+
+single_documents = single_loader.load()
+
+
+# ========================================
+# COMPARE DOCUMENT COUNTS
+# ========================================
+
+print("PAGE MODE DOCUMENTS")
+print("-------------------")
+print(len(page_documents))
+
+print("\nSINGLE MODE DOCUMENTS")
+print("---------------------")
+print(len(single_documents))
+
+
+# ========================================
+# ACCESS COMBINED DOCUMENT
+# ========================================
+
+document = single_documents[0]
+
+
+# ========================================
+# CHECK PAGE METADATA
+# ========================================
+
+print("\nSINGLE MODE METADATA")
+print("--------------------")
+
+print(
+    "Total Pages:",
+    document.metadata["total_pages"]
+)
+
+print(
+    "Page Index Available:",
+    "page" in document.metadata
+)
+
+
+# ========================================
+# DISPLAY COMBINED PAGE CONTENT
+# ========================================
+
+print("\nCOMBINED PDF CONTENT")
+print("--------------------")
+
+pages = document.page_content.split(
+    "--- PAGE BREAK ---"
+)
+
+#In Python, the split() method always returns a list of strings (list[str]).
+for number, text in enumerate(
+    pages,
+    start=1
+):
+
+    clean_text = " ".join(
+        text.split()
+    )
+
+    print("\nSECTION", number)
+    print(clean_text)
+
+Program 5 — Page-Wise Lazy Loading and Empty Text Detection
+----------------------------------------------------------------
+Objective: Process PDF pages using .lazy_load() and identify pages containing no extractable text.
+
+from langchain_community.document_loaders import PyPDFLoader
+
+
+# ========================================
+# CREATE PAGE-WISE PDF LOADER
+# ========================================
+
+loader = PyPDFLoader(
+    file_path="company_policy.pdf",
+    mode="page"
+)
+
+
+# ========================================
+# PROCESS PDF PAGES LAZILY
+# ========================================
+
+processed_pages = 0
+
+for document in loader.lazy_load():
+
+    processed_pages += 1
+
+    page_number = (
+        document.metadata["page"] + 1
+    )
+
+    text = document.page_content
+
+    print("\nPAGE", page_number)
+    print("---------------------")
+
+    if text:
+
+        print("STATUS: Text extracted")
+
+        print("CONTENT:", text)
+
+    else:
+
+        print("STATUS: No extractable text")
+
+        print(
+            "Check whether the page is blank,"
+            " scanned, or requires a different"
+            " extraction approach."
+        )
+
+
+# ========================================
+# DISPLAY TOTAL
+# ========================================
+
+print("\nTOTAL PAGES PROCESSED")
+print("---------------------")
+
+print(processed_pages)
+====================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Day 51 :
+DOCUMENT LOADERS — CSVLoader
+----------------------------
+Today's Master Formulas:
+CSV File → CSVLoader → One Document Per Data Row
+
+Situation 1:
+Our training institute maintains student information in a CSV file.
+The file contains student names, course names, fee details and joining dates.
+How will LangChain read this information?
+
+ID 	Name	Course	Fee
+S101	Ravi	Python	5000
+S102	Priya	Java	6000
+S103	Rahul	Data Science	12000
+S104	Shiva	Agentic AI	18000
+
+
+Suppose one student asks:
+"Sir, what is my course fee?"
+Our administrator opens the register and says:
+"Ravi pays ₹5,000, Priya pays ₹6,000, Rahul pays ₹12,000. Everybody please pay all these fees together!"
+Ayyooo! 😄
+Friends, each student's information is separate.
+
+That is why row-wise representation is useful.
+
+Note:
+When working with CSV data, a single row can be represented as one LangChain Document object.
+
+. What Is CSVLoader?
+-------------------
+CSVLoader is a LangChain document loader that reads CSV files and creates one Document object for each CSV data row.
+
+In normal CSV loading, the number of Documents matches the number of data rows, not the number of header-plus-data lines.
+
+. How Does CSVLoader Prepare page_content?
+------------------------------------------
+Suppose the first student row contains:
+Student ID: S101
+Name: Ravi
+Course: Python
+Fee: 5000
+
+CSVLoader typically converts the row into labelled text.
+Conceptually:
+
+student_id: S101
+name: Ravi
+course: Python
+fee: 5000
+
+Friends, observe carefully.
+Each column name is associated with its value.
+This complete text becomes the page_content of the first Document.
+
+Why Are Column Names Useful?
+----------------------------
+CSVLoader's labelled text representation can be useful in document-processing workflows.
+
+Important Observation
+---------------------
+CSVLoader does not merely store the raw CSV row as a comma-separated string.
+It prepares a text representation of the row using field names and values.
+
+Main Conclusion
+----------------
+Each CSV row becomes a Document whose page_content describes the row's field values
+
+7. Understanding CSV Metadata
+Friends, in Day 3 we learned PDF metadata such as:
+source
+page
+total_pages
+Today, CSVLoader uses a different important field:
+row
+Example
+For the first CSV data row, metadata may contain:
+{
+    "source": "students.csv",
+    "row": 0
+}
+
+For the second row:
+{
+    "source": "students.csv",
+    "row": 1
+}
+
+For the third row:
+{
+    "source": "students.csv",
+    "row": 2
+}
+
+Important Observation
+----------------------
+The row value is a zero-based data-row index.
+The header is not counted as data row zero.
+
+8. Understanding metadata_columns
+---------------------------------
+metadata_columns identifies which CSV fields should be stored in the Document's metadata.
+
+Suppose our CSV contains:
+student_id	name	course	fee
+S101	Ravi	Python	5000
+
+Now imagine we want:
+page_content:
+
+name: Ravi
+fee: 5000
+
+metadata:
+
+{
+    "student_id": "S101",
+    "course": "Python"
+}
+
+We can tell CSVLoader to treat particular columns as metadata.
+For example:
+
+metadata_columns=[
+    "student_id",
+    "course"
+]
+
+metadata_columns lets us place selected CSV fields inside Document metadata.
+Note: It is very helpful to reduce retrieval time from the vector database.
+
+9. Understanding content_columns
+--------------------------------
+content_columns tells CSVLoader which CSV fields should be included in page_content.
+Suppose the CSV contains:
+student_id
+name
+course
+fee
+But we want only:
+name
+and
+fee
+inside page_content.
+
+
+
+
+We can specify:
+content_columns=[
+    "name",
+    "fee"
+]
+
+Parameter	Purpose
+metadata_columns	Select fields to store in metadata
+content_columns	Select fields to include in page_content
+
+Note: A field can appear in both if it is selected for both purposes.
+
+Understanding source_column
+----------------------------
+source_column tells CSVLoader to use the value of a particular CSV column as the Document's source metadata.
+
+By default, source metadata identifies the CSV file.
+For example:
+
+{"source": "students.csv"}
+
+Now suppose we specify:
+
+source_column="student_id"
+
+For Ravi, the source becomes:
+S101
+For Priya:
+S102
+Note: This is useful when a row has its own source identifier.
+
+metadata_columns vs source_column
+---------------------------------
+metadata_columns adds selected fields to metadata under their column names.
+source_column specifically controls the value of metadata's source key.
+source_column changes what CSVLoader records as the source of each Document.
+
+11. Understanding csv_args
+---------------------------
+Not every CSV file uses exactly the same separator or quoting rules.
+The csv_args parameter lets us pass CSV-reading options to the underlying CSV reader.
+
+Europian people they may not use comma separator and they will use ;
+
+csv_args={
+    "delimiter": ";"
+}
+
+csv_args lets us configure how CSVLoader interprets the structure of the CSV file.
+
+Requirement	Syntax
+Import CSVLoader	from langchain_community.document_loaders import CSVLoader
+Create CSV loader	CSVLoader(file_path="students.csv")
+Select metadata columns	metadata_columns=["course"]
+Select content columns	content_columns=["name", "fee"]
+Change source column	source_column="student_id"
+Configure CSV parsing	csv_args={"delimiter": ";"}
+
+
+Program 1A — Our First CSVLoader Program
+---------------------------------------
+from langchain_community.document_loaders import CSVLoader
+
+# ========================================
+# CREATE CSV LOADER
+# ========================================
+
+loader = CSVLoader(
+    file_path="students.csv",
+	encoding='utf-8'
+)
+
+
+# ========================================
+# LOAD CSV DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY DOCUMENT COUNT
+# ========================================
+
+print("TOTAL DOCUMENTS")
+print("---------------")
+
+print(len(documents))
+
+
+# ========================================
+# DISPLAY EACH DOCUMENT
+# ========================================
+
+for document in documents:
+	print("\nPAGE CONTENT")
+	print(document.page_content)
+	print("METADATA")
+	print(document.metadata)
+
+
+Program 1A — Our First CSVLoader Program
+---------------------------------------
+Objective: Read an actual CSV file and observe how its data rows become LangChain Document objects.
+
+from pathlib import Path
+
+from langchain_community.document_loaders import CSVLoader
+
+
+# ========================================
+# CREATE SAMPLE CSV FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "students_day4.csv"
+)
+
+file_path.write_text(
+    "student_id,name,course,fee\n"
+    "S101,Ravi,Python,5000\n"
+    "S102,Priya,Java,6000\n"
+    "S103,Rahul,Data Science,12000\n",
+    encoding="utf-8"
+)
+
+
+# ========================================
+# CREATE CSV LOADER
+# ========================================
+
+loader = CSVLoader(
+    file_path=str(file_path),
+    encoding="utf-8"
+)
+
+
+# ========================================
+# LOAD CSV DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY DOCUMENT COUNT
+# ========================================
+
+print("TOTAL DOCUMENTS")
+print("---------------")
+
+print(len(documents))
+
+
+# ========================================
+# DISPLAY EACH DOCUMENT
+# ========================================
+
+for number, document in enumerate(
+    documents,
+    start=1
+):
+
+    print("\nDOCUMENT", number)
+    print("----------------")
+
+    print("PAGE CONTENT")
+    print(document.page_content)
+
+    print("\nSOURCE:")
+    print(
+        Path(
+            document.metadata["source"]
+        ).name
+    )
+
+    print(
+        "ROW INDEX:",
+        document.metadata["row"]
+    )
+
+
+25. Program 2 — Using metadata_columns and content_columns
+-----------------------------------------------------------
+Objective: Separate selected CSV fields into page_content and metadata.
+
+from pathlib import Path
+
+from langchain_community.document_loaders import CSVLoader
+
+
+# ========================================
+# CREATE CSV FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "student_metadata_day4.csv"
+)
+
+file_path.write_text(
+    "student_id,name,course,fee\n"
+    "S101,Ravi,Python,5000\n"
+    "S102,Priya,Java,6000\n",
+    encoding="utf-8"
+)
+
+
+# ========================================
+# CREATE CSV LOADER
+# ========================================
+
+loader = CSVLoader(
+    file_path=str(file_path),
+    encoding="utf-8",
+
+    metadata_columns=[
+        "student_id",
+        "course"
+    ],
+
+    content_columns=[
+        "name",
+        "fee"
+    ]
+)
+
+
+# ========================================
+# LOAD DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY RESULTS
+# ========================================
+
+print("TOTAL DOCUMENTS:", len(documents))
+
+
+for number, document in enumerate(
+    documents,
+    start=1
+):
+
+    print("\nDOCUMENT", number)
+    print("----------------")
+
+    print("PAGE CONTENT")
+    print(document.page_content)
+
+    print("\nSTUDENT ID:")
+    print(
+        document.metadata["student_id"]
+    )
+
+    print("COURSE:")
+    print(
+        document.metadata["course"]
+    )
+
+    print("ROW INDEX:")
+    print(
+        document.metadata["row"]
+    )
+
+Note: CSVLoader still provides source and row information
+
+26. Program 3 — Understanding source_column and csv_args
+Objective: Change the source metadata using a CSV column and read a file using a semicolon delimiter.
+
+
+from pathlib import Path
+
+from langchain_community.document_loaders import CSVLoader
+
+
+# ========================================
+# CREATE SEMICOLON-SEPARATED FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "special_students_day4.csv"
+)
+
+file_path.write_text(
+    "student_id;name;course;fee\n"
+    "S101;Ravi;Python;5000\n"
+    "S102;Priya;Java;6000\n",
+    encoding="utf-8"
+)
+
+
+# ========================================
+# CREATE CSV LOADER
+# ========================================
+
+loader = CSVLoader(
+    file_path=str(file_path),
+    encoding="utf-8",
+
+    source_column="student_id",
+
+    metadata_columns=[
+        "course"
+    ],
+
+    csv_args={
+        "delimiter": ";"
+    }
+)
+
+
+# ========================================
+# LOAD DOCUMENTS
+# ========================================
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY RESULTS
+# ========================================
+
+print("TOTAL DOCUMENTS:", len(documents))
+
+
+for number, document in enumerate(
+    documents,
+    start=1
+):
+
+    print("\nDOCUMENT", number)
+    print("----------------")
+
+    print("PAGE CONTENT")
+    print(document.page_content)
+
+    print("\nSOURCE:")
+    print(
+        document.metadata["source"]
+    )
+
+    print("COURSE:")
+    print(
+        document.metadata["course"]
+    )
+
+
+
+
+Observation 1 — csv_args
+Our file uses:
+;
+instead of the normal comma separator.
+We supplied:
+csv_args={"delimiter": ";"}
+Therefore, CSVLoader interprets the fields correctly.
+Observation 2 — source_column
+We supplied:
+source_column="student_id"
+Therefore, the source metadata becomes:
+S101
+for Ravi.
+And:
+S102
+for Priya.
+
+
+Observation 3 — metadata_columns
+We selected:
+course
+as metadata.
+Therefore, the course value appears in metadata.
+Because content_columns was not supplied, CSVLoader automatically includes the other non-metadata fields in page_content.
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Day 52 :
+--------
+UNDERSTANDING WEBBASELOADER
+----------------------------
+If the data is available in the website, how to read data and create Document objects.
+
+What Is WebBaseLoader?
+WebBaseLoader is a LangChain document-loading integration that retrieves HTML web pages, extracts text from their parsed HTML and returns Document objects.
+*It uses web requests and Beautiful Soup for parsing HTML content.*
+Beautiful Soup is a Python library that parse the HTML content.
+
+WebBaseLoader converts available HTML page text into LangChain Document objects.
+WebBaseLoader works with specified web-page URLs, not automatically with an entire website.
+
+How WebBaseLoader Works Internally
+----------------------------------
+WebBaseLoader loads website content and converts it into LangChain Document objects.
+Step-by-Step Process
+1. Retrieve HTML: Downloads the HTML content from the given website URL using an HTTP request.
+
+2. Parse HTML: Uses Beautiful Soup to analyse and understand the HTML structure.
+
+3. Extract Text: Uses get_text() to remove HTML tags and extract text content.
+
+4. Create Document: Stores the extracted text in page_content and website details in metadata.
+
+Understanding WebBaseLoader Metadata
+------------------------------------
+Metadata Field	Purpose
+source--->	Original page URL
+title-->	HTML page title
+description-->	Available HTML meta description
+language--->	Language declared by the page
+
+eg:
+{
+    "source": "https://example.com/",
+    "title": "Python Course",
+    "description": "Python training information",
+    "language": "en"
+}
+Understanding Important WebBaseLoader Parameters
+-------------------------------------------------
+Important Import
+from langchain_community.document_loaders import WebBaseLoader
+
+Basic Usage
+loader = WebBaseLoader(
+    web_path="https://example.com/"
+)
+--------------------
+Parameter |	Purpose
+--------------------
+web_path	Single URL or supported sequence of URLs
+web_paths	Sequence of URLs to load
+header_template	Request headers, including User-Agent
+requests_kwargs	Request options such as timeout
+raise_for_status	Raise an error for unsuccessful HTTP status codes
+bs_kwargs	Options passed to Beautiful Soup while parsing
+bs_get_text_kwargs	Options used while extracting text
+requests_per_second	Concurrency limit for supported multiple-request operations
+
+Parameter 1 — web_path
+---------------------
+Identifies the page we want to load.
+Example:
+https://example.com/
+
+Parameter 2 — web_paths
+-----------------------
+Allows us to specify multiple pages.
+Example:
+web_paths=[
+    "https://example.com/page1",
+    "https://example.com/page2"
+]
+
+
+Parameter 3 — header_template
+-----------------------------
+This parameter lets us provide HTTP request headers.
+For example, we can identify our classroom demo using a User-Agent header.
+
+
+    header_template={
+        "User-Agent": "LangChainDay4EducationalDemo/1.0"
+    },
+
+
+User-Agent is an HTTP request header that tells the website server which application or client is sending the request.
+
+
+Parameter 4 — requests_kwargs
+----------------------------
+This can configure request behaviour, such as a timeout.
+Example:
+requests_kwargs={
+    "timeout": 15
+}
+Friends, this helps prevent the program from waiting indefinitely for a slow server.
+
+Parameter 5 — raise_for_status
+------------------------------
+With:
+raise_for_status=True
+HTTP error responses can be raised as exceptions instead of silently being treated as successful page content.
+
+
+Parameter 6 — bs_get_text_kwargs
+--------------------------------
+This controls aspects of extracting text from the parsed page.
+For example:
+bs_get_text_kwargs={
+    "separator": " ",
+    "strip": True
+}
+This helps create cleaner spacing between extracted text elements.
+
+1. "separator": " "
+Specifies what should be placed between extracted text pieces.
+
+Example HTML:
+<h1>Welcome to DURGASOFT</h1>
+<p>Learn Python</p>
+<p>Learn AI</p>
+
+
+Separator |	Output
+------------------
+" "	->  Welcome to DURGASOFT Learn Python Learn AI
+"\n"-> 	Each text piece appears on a new line
+","-> 	Welcome to DURGASOFT,Learn Python,Learn AI
+""-> 	Welcome to DURGASOFTLearn PythonLearn AI
+
+Conclusion: separator controls how extracted text pieces are joined together.
+2. "strip": True
+Removes unnecessary spaces and newline characters from the beginning and end of each extracted text piece.
+
+Example:
+<p>    Learn Python    </p>
+
+
+Without stripping:
+"    Learn Python    "
+
+
+With strip=True:
+"Learn Python"
+
+
+Conclusion: strip=True removes unnecessary surrounding whitespace and makes extracted text cleaner.
+
+Program-1: First Program:
+-------------------------
+from langchain_community.document_loaders import WebBaseLoader
+url = "https://www.durgasoftonline.com/s/pages/new-batches/"
+
+loader = WebBaseLoader(
+  web_path = url
+)
+documents = loader.load()
+print(len(documents)) #1
+document = documents[0]
+print(document.page_content)
+print(document.metadata)
+
+
+Program 4 — Our First WebBaseLoader Program
+-------------------------------------------
+from langchain_community.document_loaders import WebBaseLoader
+
+
+# ========================================
+# SPECIFY WEB PAGE
+# ========================================
+
+url = "https://www.durgasoftonline.com/s/pages/new-batches/"
+
+
+# ========================================
+# CREATE WEB LOADER
+# ========================================
+
+loader = WebBaseLoader(
+    web_path=url,
+
+    header_template={
+        "User-Agent": "LangChainDay4EducationalDemo/1.0"
+    },
+
+    requests_kwargs={
+        "timeout": 15
+    },
+
+    raise_for_status=True,
+
+    bs_get_text_kwargs={
+        "separator": " ",
+        "strip": True
+    }
+)
+
+
+# ========================================
+# LOAD WEB PAGE
+# ========================================
+
+try:
+
+    documents = loader.load()
+
+    print("TOTAL DOCUMENTS")
+    print("---------------")
+    print(len(documents))
+
+    document = documents[0]
+
+    print("\nSOURCE")
+    print("------")
+    print(document.metadata["source"])
+
+    print("\nTITLE")
+    print("-----")
+    print(
+        document.metadata.get(
+            "title",
+            "Not available"
+        )
+    )
+
+    print("\nPAGE CONTENT")
+    print("------------")
+
+    text = " ".join(
+        document.page_content.split()
+    )
+
+    print(text) 
+    #print(text[:500]) 
+
+except Exception as error:
+
+    print("WEB PAGE COULD NOT BE LOADED")
+
+    print("ERROR TYPE:")
+    print(type(error).__name__)
+
+    print("ERROR DETAILS:")
+    print(error)
+----------------------------------------------------
+Program with multiple urls:
+----------------------------
+
+from langchain_community.document_loaders import WebBaseLoader
+
+
+# ========================================
+# SPECIFY MULTIPLE WEB PAGES
+# ========================================
+
+urls = [
+    "https://www.durgasoftonline.com/",
+    "https://www.durgasoftonline.com/s/pages/new-batches/",
+    "https://www.durgasoftonline.com/faqs"
+]
+
+
+# ========================================
+# CREATE WEB LOADER
+# ========================================
+
+loader = WebBaseLoader(
+    web_paths=urls,
+
+    header_template={
+        "User-Agent": "LangChainDay4EducationalDemo/1.0"
+    },
+
+    requests_kwargs={
+        "timeout": 15
+    },
+
+    raise_for_status=True,
+
+    bs_get_text_kwargs={
+        "separator": " ",
+        "strip": True
+    }
+)
+
+
+# ========================================
+# LOAD MULTIPLE WEB PAGES
+# ========================================
+
+try:
+
+    documents = loader.load()
+
+    print("TOTAL DOCUMENTS")
+    print("---------------")
+    print(len(documents))
+
+
+    # ====================================
+    # DISPLAY EACH DOCUMENT
+    # ====================================
+
+    for index, document in enumerate(documents, start=1):
+
+        print("\nDOCUMENT", index)
+        print("====================")
+
+        print("\nSOURCE")
+        print("------")
+        print(document.metadata.get("source", "Not available"))
+
+        print("\nTITLE")
+        print("-----")
+        print(document.metadata.get("title", "Not available"))
+
+        print("\nPAGE CONTENT")
+        print("------------")
+
+        text = " ".join(
+            document.page_content.split()
+        )
+
+        print(text[:500])
+
+
+except Exception as error:
+
+    print("WEB PAGES COULD NOT BE LOADED")
+
+    print("ERROR TYPE:")
+    print(type(error).__name__)
+
+    print("ERROR DETAILS:")
+    print(error)
+---------------------------------------------
+Program 5 — WebBaseLoader With a Local Demonstration Website
+------------------------------------------------------------
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+
+from langchain_community.document_loaders import WebBaseLoader
+
+
+# ========================================
+# CREATE A LOCAL DEMO WEB PAGE
+# ========================================
+
+html_content = """
+<html lang="en">
+<head>
+    <title>Institute Notices</title>
+    <meta
+        name="description"
+        content="Training institute updates"
+    >
+</head>
+<body>
+    <main>
+        <h1>Institute Notices</h1>
+        <p>Python batch starts on Monday.</p>
+        <p>Library opens at 8 AM.</p>
+    </main>
+</body>
+</html>
+"""
+
+
+# ========================================
+# DEFINE DEMO HTTP SERVER
+# ========================================
+
+class DemoHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+
+        body = html_content.encode("utf-8")
+
+        self.send_response(200)
+
+        self.send_header(
+            "Content-Type",
+            "text/html; charset=utf-8"
+        )
+
+        self.send_header(
+            "Content-Length",
+            str(len(body))
+        )
+
+        self.end_headers()
+
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+# ========================================
+# START LOCAL WEB SERVER
+# ========================================
+
+server = ThreadingHTTPServer(
+    ("127.0.0.1", 0),
+    DemoHandler
+)
+
+thread = Thread(
+    target=server.serve_forever,
+    daemon=True
+)
+
+thread.start()
+
+
+try:
+
+    # ====================================
+    # CREATE WEB LOADER
+    # ====================================
+
+    url = (
+        f"http://127.0.0.1:"
+        f"{server.server_port}/"
+    )
+
+    loader = WebBaseLoader(
+        web_path=url,
+
+        header_template={
+            "User-Agent": "LangChainDay4LocalDemo/1.0"
+        },
+
+        bs_get_text_kwargs={
+            "separator": " ",
+            "strip": True
+        },
+
+        requests_kwargs={
+            "timeout": 10
+        },
+
+        raise_for_status=True
+    )
+
+    # ====================================
+    # LOAD LOCAL WEB PAGE
+    # ====================================
+
+    documents = loader.load()
+
+    document = documents[0]
+
+    # ====================================
+    # DISPLAY RESULTS
+    # ====================================
+
+    print("TOTAL DOCUMENTS:", len(documents))
+
+    print("\nTITLE:")
+    print(
+        document.metadata.get(
+            "title",
+            "Not available"
+        )
+    )
+
+    print("\nDESCRIPTION:")
+    print(
+        document.metadata.get(
+            "description",
+            "Not available"
+        )
+    )
+
+    print("\nLANGUAGE:")
+    print(
+        document.metadata.get(
+            "language",
+            "Not available"
+        )
+    )
+
+    print("\nSOURCE IS LOCAL:")
+    print(
+        document.metadata["source"].startswith(
+            "http://127.0.0.1:"
+        )
+    )
+
+    print("\nPAGE CONTENT:")
+    print(
+        " ".join(
+            document.page_content.split()
+        )
+    )
+
+finally:
+
+    server.shutdown()
+    server.server_close()
+
+
+
+Limitation of WebBaseLoader:
+----------------------------
+WebBaseLoader cannot execute JavaScript. It can load static HTML content, but it may miss content generated dynamically using JavaScript.
+
+For JavaScript-rendered websites, we have two main alternatives:
+1. PlaywrightURLLoader — Recommended.
+2. SeleniumURLLoader — Another good alternative.
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Day 53:
+-------------
+1. Why is langchain_community being sunset?
+-------------------------------------------
+langchain_community was a large package containing hundreds of integrations, including document loaders, vector stores, tools, and other components.
+
+Over time, the package became difficult to maintain because:
+1. Heavyweight package: It contained a very large number of integrations and supported many optional dependencies.
+2. Dependency complexity: Different integrations required different third-party libraries.
+3. Difficult maintenance: Maintaining so many integrations in one package became complicated.
+4. Shared release cycle: Updating one integration could require coordinating changes across the common package.
+5. Better alternatives: Standalone integration packages allow independent development and maintenance.
+LangChain officially announced the sunset on 22 May 2026. 
+
+Important clarification: It does not mean Python loads every library into memory whenever we import langchain_community. The problem was mainly the large package structure, dependency management and maintenance complexity.
+
+
+TEXT FILE LOADING USING MODERN LANGCHAIN
+----------------------------------------
+TWO MODERN WAYS TO LOAD TEXT
+
+Approach 1 — Direct Text Reading and Document Creation
+-------------------------------------------------------
+from pathlib import Path
+from langchain_core.documents import Document
+
+file_path = Path("student_rules.txt")
+
+document = Document(
+    page_content=file_path.read_text(encoding="utf-8"),
+    metadata={"source": str(file_path)}
+)
+print(document.page_content)
+print(document.metadata)
+
+
+Approach 1 — Using Normal Python Without LangChain
+
+This approach is not recommended for large-scale applications because of:
+1. Scalability Issues: Difficult to manage and maintain as the application grows.
+2. Lack of Standardization: No common structure for loading and processing documents.
+
+
+Approach 2 — Creating a LangChain-Compatible Loader (Recommended)
+------------------------------------------------------------------
+We should create custom loaders using LangChain's Document and BaseLoader classes.
+
+Advantages:
+1. Scalability: Easier to extend and maintain.
+2. Standardization: Follows LangChain's standard document-loading structure.
+3. Compatibility: Works smoothly with other LangChain components.
+4. Reusability: The same loader can be reused across multiple applications.
+
+
+BaseLoader is the core interface used to implement LangChain document loaders.
+It remains documented in langchain-core. 
+
+We can create our own loader class using this interface.
+That loader can read a file and yield Document objects.
+
+Understanding BaseLoader
+-------------------------
+Important Import:
+from langchain_core.document_loaders import BaseLoader
+
+Our custom loader will inherit from BaseLoader.
+We will implement:
+lazy_load()
+
+The BaseLoader interface already provides:
+load()
+
+
+Note:
+lazy_load()	Yields Documents through an iterator
+load()	Collects Documents into a list
+------------------------------------------------
+Generator simple example to understand:
+---------------------------------------
+def numbers():
+    yield 10
+    yield 20
+    yield 30
+
+
+result = numbers()
+
+print(type(result))
+
+for num in result:
+    print(num)
+
+E:\lcclasses>py test.py
+<class 'generator'>
+10
+20
+30
+
+Understanding the Custom Text Loader
+-------------------------------------
+We will create a class called:
+SimpleTextLoader
+This is our own classroom implementation, not a built-in LangChain class.
+It will accept:
+•	file_path
+•	encoding
+It will:
+1.	Read the specified text file.
+2.	Create a LangChain Document.
+3.	Store the source path in metadata.
+4.	Yield the Document.
+
+Program 2 — Creating a Custom LangChain Text Loader
+---------------------------------------------------
+Objective: Create a reusable loader using the maintained BaseLoader interface.
+
+from pathlib import Path
+
+from langchain_core.documents import Document
+from langchain_core.document_loaders import BaseLoader
+
+
+# ========================================
+# CUSTOM TEXT LOADER
+# ========================================
+
+class SimpleTextLoader(BaseLoader):
+
+    def __init__(
+        self,
+        file_path,
+        encoding="utf-8"
+    ):
+
+        self.file_path = Path(file_path)
+        self.encoding = encoding
+
+    def lazy_load(self):
+
+        content = self.file_path.read_text(
+            encoding=self.encoding
+        )
+
+        yield Document(
+            page_content=content,
+            metadata={
+                "source": str(self.file_path)
+            }
+        )
+
+
+# ========================================
+# CREATE SAMPLE FILE
+# ========================================
+
+file_path = (
+    Path(__file__).resolve().parent
+    / "library_rules.txt"
+)
+
+file_path.write_text(
+    "Library opens at 8 AM.\n"
+    "Library closes at 6 PM.\n",
+    encoding="utf-8"
+)
+
+
+# ========================================
+# USE CUSTOM LANGCHAIN LOADER
+# ========================================
+
+loader = SimpleTextLoader(
+    file_path=file_path
+)
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY RESULTS
+# ========================================
+
+print("RETURN TYPE:", type(documents).__name__)
+
+print("TOTAL DOCUMENTS:", len(documents))
+
+print("DOCUMENT TYPE:", type(documents[0]).__name__)
+
+print("\nCONTENT:")
+print(documents[0].page_content.strip())
+
+print("\nSOURCE:")
+print(
+    Path(
+        documents[0].metadata["source"]
+    ).name
+)
+
+Note:
+1. We created SimpleTextLoader, our own implementation of LangChain's BaseLoader interface.
+We implemented lazy_load().
+We did not implement a separate load() method.
+Why?
+Because the maintained BaseLoader interface already provides it.
+
+2. At the time of execution there is no deprecation warning.
+
+Main Conclusion:
+----------------
+BaseLoader lets us build our own LangChain-compatible document loaders without depending on sunset community integrations
+
+9. Program 3 — Loading Multiple Text Files
+-------------------------------------------
+Objective: Load several files into one collection using a custom BaseLoader implementation.
+
+from pathlib import Path
+
+from langchain_core.documents import Document
+from langchain_core.document_loaders import BaseLoader
+
+
+# ========================================
+# CUSTOM DIRECTORY TEXT LOADER
+# ========================================
+
+class FolderTextLoader(BaseLoader):
+
+    def __init__(self, folder_path):
+
+        self.folder_path = Path(folder_path)
+
+    def lazy_load(self):
+
+        for file_path in sorted(
+            self.folder_path.glob("*.txt")
+        ):
+
+            content = file_path.read_text(
+                encoding="utf-8"
+            )
+
+            yield Document(
+                page_content=content,
+                metadata={
+                    "source": str(file_path)
+                }
+            )
+
+
+# ========================================
+# PREPARE SAMPLE FILES
+# ========================================
+
+folder = (
+    Path(__file__).resolve().parent
+    / "day2_sample_files"
+)
+
+folder.mkdir(exist_ok=True)
+
+files = {
+    "admissions.txt": "Admissions start on Monday.",
+    "library.txt": "Library opens at 8 AM.",
+    "student_rules.txt": "Students must carry ID cards."
+}
+
+for filename, content in files.items():
+
+    (folder / filename).write_text(
+        content,
+        encoding="utf-8"
+    )
+
+
+# ========================================
+# LOAD MULTIPLE TEXT FILES
+# ========================================
+
+loader = FolderTextLoader(folder)
+
+documents = loader.load()
+
+
+# ========================================
+# DISPLAY DOCUMENTS
+# ========================================
+
+print("TOTAL DOCUMENTS:", len(documents))
+
+
+for number, document in enumerate(
+    documents,
+    start=1
+):
+
+    print("\nDOCUMENT", number)
+
+    print(
+        "SOURCE:",
+        Path(
+            document.metadata["source"]
+        ).name
+    )
+
+    print(
+        "CONTENT:",
+        document.page_content
+    )
+
+Note: The inherited .load() method returns all yielded Documents as a list.
+
+Important points:
+-----------------
+
+1. Document loading brings external information into LangChain Document objects.
+2. The Document class remains supported in LangChain Core.
+3. BaseLoader is the maintained interface for custom loaders.
+4. A custom loader should implement lazy_load() to yield Documents.
+5. The inherited .load() method returns a list of Documents.
+6. One file may produce one or multiple Documents depending on our loading design.
+7. Our recommended classroom code no longer depends on langchain-community.
+
+Today's Master Formula:
+TXT File → Custom BaseLoader → Document → List of Documents

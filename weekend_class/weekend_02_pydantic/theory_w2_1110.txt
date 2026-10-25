@@ -1,0 +1,108 @@
+1. unstructured data : free text data, good for human. its a natural language.
+ I am Pradeep Jain at 36 age in Sagar.
+2. structured data: useful for app, software and programming 
+name:Pradeep Jain
+age: 38
+location: Sagar
+
+Pydantic library :
+=================
+- it to define schema and validation
+- data modeling, schema and structure is same temp
+- install pydantic 
+  pip install pydantic
+Define schema:
+-------------
+- A python class require 
+- extend BaseModel class
+# BaseModel is Parent class must be extend
+# reponsible to define schema and validation
+# in schema every element by default mandatoy
+# schema mean define type and fields name
+
+example:
+ 
+from pydantic import BaseModel
+class Student(BaseModel):
+    name:str 
+    age: int
+    course:str
+s = Student(name="Vandhu",age=34,course="Moksha Shashtra") 
+# there is no such param constructor bcoz take care by BaseModel 
+print(s)
+# s directly print magic method take care by BaseModel
+
+# s1 = Student(name="Vandhu",age=34) # validation error for course
+#print(s1)
+s2 = Student(name="Vandhu",age='34',course="Moksha Shashtra") # for age convert automatically
+print(s2)
+
+# s3 = Student(name="Vandhu",age='thirty four',course="Moksha Shashtra") # validation error
+# print(s3)
+
+------
+provides methods:
+1. model_dump() 
+2. model_dump_json()
+# python object convert into dict
+data = s.model_dump() # convert into dict
+print(data)
+# python object convert into json string
+json_string = s.model_dump_json() # convert into json
+print(json_string)
+
+----------------------------
+How LLM know about need to return data in pydantic or defined schema format not AIMessage
+- llm has with_structured_output() function
+- pass pydantic object
+
+Example :
+from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
+import os
+llm = ChatOpenAI(model='gpt-5-nano', api_key=os.getenv("OPENAI_API_KEY"))
+class Student(BaseModel):
+    name:str 
+    age: int
+    course:str
+    
+# bind schema to llm 
+schema_llm = llm.with_structured_output(Student)
+
+query = input("You: ")
+response = schema_llm.invoke(query)
+print(response)
+# try different input and check response
+# Ram kumar is working in software company since 2010. now technology is going to change and company adopting AI. Microsoft is also hiring N8N experience person.
+
+=========================================================
+
+# By default in pydantic schema all fields are mandatory
+# how to make optional ex:  experience field for fresher.
+# use None 
+Example :
+from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
+import os
+llm = ChatOpenAI(model='gpt-5-nano', api_key=os.getenv("OPENAI_API_KEY"))
+class Student(BaseModel):
+    name:str 
+    age: int | None = None
+    course:str | None = None
+    
+# bind schema to llm 
+schema_llm = llm.with_structured_output(Student)
+
+query = input("You: ")
+response = schema_llm.invoke(query)
+print(response)
+Try these input and check the result
+# Ram kumar is working in software company since 2010. now technology is going to change and company adopting AI. Microsoft is also hiring N8N experience person.
+#My teacher name is Ram Babu who is around 50 years old and still teaching Java. I am Pradeep jain learning Python from him at 36 age.
+################################################
+
+# you found getting hallucination because 2 name and 2 age and 2 course.
+  How to resolve this hallucination
+- use Feild class 
+- use descrition property and describe about what that field exactly got or map
+
